@@ -566,7 +566,7 @@ function UserManagement() {
 }
 
 // ─── CUSTOMER DETAIL PANEL ────────────────────────────────────
-function CustomerDetail({ customerId, onClose, onUpdated }) {
+function CustomerDetail({ customerId, onClose, onUpdated, onQuoteOpen, onQuoteClose }) {
   const { canWrite } = useAuth();
   const [customer, setCustomer] = useState(null);
   const [jobs, setJobs] = useState([]);
@@ -575,6 +575,7 @@ function CustomerDetail({ customerId, onClose, onUpdated }) {
   const [expandedJob, setExpandedJob] = useState(null);
   const [jobProducts, setJobProducts] = useState({});
   const [showNewJob, setShowNewJob] = useState(false);
+  const [showNewQuoteForCustomer, setShowNewQuoteForCustomer] = useState(null);
   const [showPicker, setShowPicker] = useState(false);
   const [pendingProds, setPendingProds] = useState([]);
   const [newJob, setNewJob] = useState({ title: "", description: "", amount: "", status: "Quoted", job_date: new Date().toISOString().slice(0, 10) });
@@ -686,7 +687,7 @@ function CustomerDetail({ customerId, onClose, onUpdated }) {
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                 <span style={{ fontSize: 13, color: C.steelLight }}>{jobs.length} job{jobs.length !== 1 ? "s" : ""}</span>
-                {canWrite && <button onClick={() => setShowNewJob(!showNewJob)} style={{ fontSize: 12, padding: "6px 14px", borderRadius: 6, border: `1px solid ${C.copper}`, background: showNewJob ? C.copper : C.white, color: showNewJob ? C.white : C.copper, cursor: "pointer", fontWeight: 500 }}>{showNewJob ? "Cancel" : "+ New Job"}</button>}
+                {canWrite && <button onClick={() => { setShowNewQuoteForCustomer(customer.id); onQuoteOpen && onQuoteOpen(); }} style={{ fontSize: 12, padding: "6px 14px", borderRadius: 6, border: `1px solid ${C.copper}`, background: C.copper, color: C.white, cursor: "pointer", fontWeight: 500 }}>+ New Quote</button>}
               </div>
 
               {showNewJob && (
@@ -797,7 +798,7 @@ function CustomerDetail({ customerId, onClose, onUpdated }) {
           )}
         </div>
       </div>
-      {showPicker && <ProductPicker onClose={() => setShowPicker(false)} onAdd={p => setPendingProds(pp => [...pp, p])} />}
+      {showNewQuoteForCustomer && <QuotingApp preselectedCustomerId={showNewQuoteForCustomer} onQuoteCreated={() => { setShowNewQuoteForCustomer(null); if (onQuoteClose) onQuoteClose(); load(); }} />}
     </div>
   );
 }
@@ -912,6 +913,7 @@ function CRMApp() {
   const [filterType, setFilterType] = useState("All");
   const [filterStatus, setFilterStatus] = useState("All");
   const [showNew, setShowNew] = useState(false);
+  const [customerQuoteOpen, setCustomerQuoteOpen] = useState(false);
   const [view, setView] = useState("customers");
   const [allJobs, setAllJobs] = useState([]);
 
@@ -956,7 +958,7 @@ function CRMApp() {
             <div style={{ fontSize: 10, opacity: 0.6, letterSpacing: 0.5, textTransform: "uppercase", color: C.white }}>CRM & Order Management</div>
           </div>
         </div>
-        {["customers", "jobs", "products", "quickbooks", "quotes", "calendar", ...(isAdmin ? ["users"] : [])].map(v => (
+        {["customers", "jobs", "products", "quotes", "quickbooks", "calendar", ...(isAdmin ? ["users"] : [])].map(v => (
           <button key={v} onClick={() => setView(v)} style={{ background: "none", border: "none", color: view === v ? C.copperLight : "rgba(255,255,255,0.55)", fontSize: 13, padding: "18px 13px", cursor: "pointer", fontWeight: view === v ? 600 : 400, borderBottom: `2px solid ${view === v ? C.copper : "transparent"}`, fontFamily: "inherit" }}>
             {v[0].toUpperCase() + v.slice(1)}
           </button>
@@ -1098,11 +1100,12 @@ function CRMApp() {
         )}
 
         {view === "users" && isAdmin && <UserManagement />}
-	{view === "quotes" && <QuotingApp />}
+	{view === "quotes" && !customerQuoteOpen && <QuotingApp />}
 	{view === "calendar" && <ProductionCalendar />}
       </div>
 
-      {selectedId && <CustomerDetail customerId={selectedId} onClose={() => setSelectedId(null)} onUpdated={loadCustomers} />}
+      {selectedId && <CustomerDetail customerId={selectedId} onClose={() => { setSelectedId(null); setCustomerQuoteOpen(false); }} onUpdated={loadCustomers} onQuoteOpen={() => setCustomerQuoteOpen(true)} onQuoteClose={() => setCustomerQuoteOpen(false)} />}
+{view === "quotes" && selectedId && <QuotingApp preselectedCustomerId={selectedId} />}
       {showNew && <NewCustomerModal onClose={() => setShowNew(false)} onSaved={loadCustomers} />}
     </div>
   );
