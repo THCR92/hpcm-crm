@@ -6,7 +6,9 @@
 // Supabase Dashboard → Project Settings → API
 // ============================================================
 
-import { useState, useEffect, useMemo, createContext, useContext } from "react";
+import QuotingApp from "./hpcm-quotes.jsx";
+import ProductionCalendar from "./hpcm-calendar.jsx";
+import { useState, useEffect, useMemo, createContext, useContext, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL  = "https://ygpueqfbhlgyeqgmchfb.supabase.co";
@@ -801,13 +803,54 @@ function CustomerDetail({ customerId, onClose, onUpdated }) {
 }
 
 // ─── NEW CUSTOMER MODAL ───────────────────────────────────────
+function AddressAutocomplete({ value, onChange, required }) {
+  const inputRef = useRef(null);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (window.google && window.google.maps) { initAutocomplete(); return; }
+    if (document.getElementById("google-maps-script")) { 
+      const interval = setInterval(() => {
+        if (window.google && window.google.maps) { clearInterval(interval); initAutocomplete(); }
+      }, 200);
+      return () => clearInterval(interval);
+    }
+    const script = document.createElement("script");
+    script.id = "google-maps-script";
+    script.src = `https://maps.googleapis.com/maps/api/js?key=AIzaSyAUdOOZArkMQkCSTJ5oTpdt0r8C8U4b2w8&libraries=places`;
+    script.async = true;
+    script.onload = () => { setLoaded(true); initAutocomplete(); };
+    document.head.appendChild(script);
+  }, []);
+
+  function initAutocomplete() {
+    if (!inputRef.current) return;
+    const ac = new window.google.maps.places.Autocomplete(inputRef.current, {
+      types: ["address"], componentRestrictions: { country: "us" },
+    });
+    ac.addListener("place_changed", () => {
+      const place = ac.getPlace();
+      if (place.formatted_address) onChange(place.formatted_address);
+    });
+  }
+
+  return (
+    <div>
+      <input ref={inputRef} defaultValue={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder="Start typing address…"
+        style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: `1.5px solid ${required ? C.danger : C.ashDark}`, fontSize: 13, boxSizing: "border-box", color: C.steel }} />
+      {required && <div style={{ fontSize: 11, color: C.danger, marginTop: 3 }}>Required</div>}
+    </div>
+  );
+}
 function NewCustomerModal({ onClose, onSaved }) {
   const [form, setForm] = useState({ name: "", contact: "", email: "", phone: "", address: "", type: "Contractor/Builder", notes: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   async function handleSave() {
-    if (!form.name) return;
+    if (!form.name || !form.phone || !form.email || !form.address || !form.type) return;
     setSaving(true);
     const { error } = await supabase.from("customers").insert({ ...form, qb_id: "QB-" + Math.floor(Math.random() * 9000 + 1000) });
     setSaving(false);
@@ -825,10 +868,15 @@ function NewCustomerModal({ onClose, onSaved }) {
         </div>
         <div style={{ padding: 22 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            {[{ k: "name", l: "Company / Name *", ph: "ABC Builders or Jane Smith", sp: 2 }, { k: "contact", l: "Primary Contact", ph: "Jane Smith", sp: 1 }, { k: "phone", l: "Phone", ph: "(307) 555-0000", sp: 1 }, { k: "email", l: "Email", ph: "jane@example.com", sp: 2 }, { k: "address", l: "Address", ph: "123 Main St, Cheyenne WY", sp: 2 }].map(f => (
+            {[{ k: "name", l: "Company / Name *", ph: "ABC Builders or Jane Smith", sp: 2 }, { k: "contact", l: "Primary Contact", ph: "Jane Smith", sp: 1 }, { k: "phone", l: "Phone *", ph: "(307) 555-0000", sp: 1 }, { k: "email", l: "Email *", ph: "jane@example.com", sp: 2 }, { k: "address", l: "Address *", ph: "123 Main St, Cheyenne WY", sp: 2 }].map(f => (
               <div key={f.k} style={{ gridColumn: `span ${f.sp}` }}>
                 <label style={{ fontSize: 11, color: C.steelLight, display: "block", marginBottom: 4 }}>{f.l}</label>
-                <input value={form[f.k]} onChange={e => setForm({ ...form, [f.k]: e.target.value })} placeholder={f.ph} style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: `1px solid ${C.ashDark}`, fontSize: 13, boxSizing: "border-box" }} />
+                {f.k === "address"
+                  ? <AddressAutocomplete value={form.address} onChange={val => setForm({ ...form, address: val })} required={!form.address} />
+                  : <input value={form[f.k]} onChange={e => setForm({ ...form, [f.k]: e.target.value })} placeholder={f.ph}
+                      style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: `1.5px solid ${(f.k === "phone" || f.k === "email") && !form[f.k] ? C.danger : C.ashDark}`, fontSize: 13, boxSizing: "border-box", color: C.steel }} />
+                }
+                {(f.k === "phone" || f.k === "email") && !form[f.k] && <div style={{ fontSize: 11, color: C.danger, marginTop: 3 }}>Required</div>}
               </div>
             ))}
             <div style={{ gridColumn: "span 2" }}>
@@ -842,7 +890,8 @@ function NewCustomerModal({ onClose, onSaved }) {
               <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: `1px solid ${C.ashDark}`, fontSize: 13, resize: "vertical", boxSizing: "border-box" }} />
             </div>
           </div>
-          {error && <div style={{ marginTop: 10, padding: "8px 12px", borderRadius: 6, background: C.dangerBg, color: C.danger, fontSize: 12 }}>{error}</div>}
+{(!form.phone || !form.email || !form.address || !form.type) && form.name && <div style={{ marginTop: 10, padding: "8px 12px", borderRadius: 6, background: C.warnBg, color: C.warn, fontSize: 12 }}>Please fill in all required fields (*) before saving.</div>}          
+{error && <div style={{ marginTop: 10, padding: "8px 12px", borderRadius: 6, background: C.dangerBg, color: C.danger, fontSize: 12 }}>{error}</div>}
           <div style={{ display: "flex", gap: 10, marginTop: 18, justifyContent: "flex-end" }}>
             <button onClick={onClose} style={{ padding: "8px 18px", borderRadius: 6, border: `1px solid ${C.ashDark}`, background: C.white, color: C.steelLight, fontSize: 13, cursor: "pointer" }}>Cancel</button>
             <button onClick={handleSave} disabled={saving} style={{ padding: "8px 22px", borderRadius: 6, background: C.copper, color: C.white, border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{saving ? "Saving…" : "Create Customer"}</button>
@@ -907,7 +956,7 @@ function CRMApp() {
             <div style={{ fontSize: 10, opacity: 0.6, letterSpacing: 0.5, textTransform: "uppercase", color: C.white }}>CRM & Order Management</div>
           </div>
         </div>
-        {["customers", "jobs", "products", "quickbooks", ...(isAdmin ? ["users"] : [])].map(v => (
+        {["customers", "jobs", "products", "quickbooks", "quotes", "calendar", ...(isAdmin ? ["users"] : [])].map(v => (
           <button key={v} onClick={() => setView(v)} style={{ background: "none", border: "none", color: view === v ? C.copperLight : "rgba(255,255,255,0.55)", fontSize: 13, padding: "18px 13px", cursor: "pointer", fontWeight: view === v ? 600 : 400, borderBottom: `2px solid ${view === v ? C.copper : "transparent"}`, fontFamily: "inherit" }}>
             {v[0].toUpperCase() + v.slice(1)}
           </button>
@@ -1049,6 +1098,8 @@ function CRMApp() {
         )}
 
         {view === "users" && isAdmin && <UserManagement />}
+	{view === "quotes" && <QuotingApp />}
+	{view === "calendar" && <ProductionCalendar />}
       </div>
 
       {selectedId && <CustomerDetail customerId={selectedId} onClose={() => setSelectedId(null)} onUpdated={loadCustomers} />}
